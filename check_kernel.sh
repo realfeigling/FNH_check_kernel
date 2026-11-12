@@ -23,6 +23,8 @@ export CPU_EXPLICIT="0"
 export CLEAN_BUILD="0"
 export CHANGE_CPU="0"
 export STAGING="0"
+export DRY_RUN="0"
+export LOG_FILE=""
 
 NPROC=$(nproc 2>/dev/null || echo 1)
 
@@ -48,6 +50,7 @@ show_usage() {
   echo "-m                  Aktuellen Kernel holen und menuconfig starten"
   echo "-l|--list           Aktuell verfügbare Kernel-Zweige von kernel.org anzeigen"
   echo "--clean             Kernel-Tree vor dem Build mit make clean bereinigen"
+  echo "--log <file>        Ausgabe zusätzlich in eine Logdatei schreiben"
   echo "--change-cpu        Cross-CPU-Kernel als nächsten Bootkernel setzen"
   echo "                    Mit -A/-I: Kernel interaktiv auswählen und für diesen CPU-Typ bauen"
   echo "-h                  Hilfe anzeigen"
@@ -256,6 +259,17 @@ parse_global_args() {
       --staging)
         STAGING="1"
         ;;
+      --dry-run)
+        DRY_RUN="1"
+        ;;
+      --log)
+        shift
+        if [ "$#" -eq 0 ]; then
+          echo "Missing log file after --log" >&2
+          exit 1
+        fi
+        LOG_FILE="$1"
+        ;;
       --change-cpu|--change-CPU|--changeCPU|--change_cpu|--chage-CPU)
         CHANGE_CPU="1"
         ;;
@@ -276,7 +290,7 @@ parse_global_args() {
     shift || true
   done
 
-  export CPUTYPE CPU_EXPLICIT CLEAN_BUILD CHANGE_CPU STAGING ARGS_TEXT
+  export CPUTYPE CPU_EXPLICIT CLEAN_BUILD CHANGE_CPU STAGING DRY_RUN LOG_FILE ARGS_TEXT
 }
 init_cpu_type() {
   HOST_CPUTYPE="$(detect_cpu_type)"
@@ -557,9 +571,9 @@ config_kernel2() {
 
   run_optional_clean
 
-  make ${MAKEPARM} bzImage
-  make ${MAKEPARM} modules
-  make ${MAKEPARM} modules_install
+  make "$MAKEPARM" bzImage
+  make "$MAKEPARM" modules
+  make "$MAKEPARM" modules_install
 
   config_localversion="$(get_config_localversion "$srcdir/.config")"
 
@@ -588,9 +602,9 @@ config_kernel_minusk() {
 
   run_optional_clean
 
-  make ${MAKEPARM} bzImage
-  make ${MAKEPARM} modules
-  make ${MAKEPARM} modules_install
+  make "$MAKEPARM" bzImage
+  make "$MAKEPARM" modules
+  make "$MAKEPARM" modules_install
 
   config_localversion="$(get_config_localversion "$srcdir/.config")"
 
@@ -793,9 +807,9 @@ run_staging() {
     fi
     ( cd "$srcdir" &&
       if [ "$CLEAN_BUILD" = 1 ]; then make clean; fi &&
-      make ${MAKEPARM} bzImage &&
-      make ${MAKEPARM} modules &&
-      make ${MAKEPARM} modules_install )
+      make "$MAKEPARM" bzImage &&
+      make "$MAKEPARM" modules &&
+      make "$MAKEPARM" modules_install )
     install -m 0644 "$srcdir/arch/x86/boot/bzImage" "/boot/vmlinuz-${release}"
     install -m 0644 "$srcdir/.config" "/boot/config-${release}"
     if [ -e "/boot/initrd.img-${release}" ]; then
@@ -810,6 +824,18 @@ run_staging() {
 }
 
 parse_global_args "$@"
+
+if [ -n "$LOG_FILE" ]; then
+  exec > >(tee -a "$LOG_FILE") 2>&1
+fi
+
+if [ "$DRY_RUN" = "1" ]; then
+  print_info "Dry run" "enabled"
+  print_info "CPU target" "${CPUTYPE:-auto}"
+  print_info "Arguments" "${ARGS_TEXT:-default workflow}"
+  exit 0
+fi
+
 set --
 if [ -n "${ARGS_TEXT:-}" ]; then
   while IFS= read -r arg; do
