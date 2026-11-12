@@ -1,0 +1,116 @@
+.TH CHECK_KERNEL 1 "12 November 2026" "Check Kernel v2.0.25" "User Commands"
+.SH NAME
+check_kernel \- download, configure, build, and install Linux kernels
+.SH SYNOPSIS
+.B check_kernel.sh
+.RI [ CPU ] [ OPTION ]
+.SH DESCRIPTION
+.B check_kernel.sh
+checks kernel.org for the newest release in the current kernel tree, downloads Linux kernel source, opens the kernel configuration, builds the kernel and modules, installs them below
+.B /boot
+and
+.B /lib/modules,
+and updates the GRUB configuration. It must normally be run as root on a Linux system.
+.PP
+Sources are stored below
+.B /usr/src/linux-VERSION-CPU
+and temporary downloads below
+.B /tmp/linuxkrntmp.
+The script asks for confirmation before downloading and installing a kernel.
+.SH OPTIONS
+.TP
+.BR -A , --amd
+Build for AMD processors. This may be combined with the options below.
+.TP
+.BR -I , -i , --intel
+Build for Intel processors. This may be combined with the options below.
+.TP
+.BI -t  TREE
+Resolve and build the newest release in a kernel tree, for example
+.BR "-t 6.12" .
+.TP
+.BI -k  VERSION
+Build an exact release, for example
+.BR "-k 6.12.90" .
+.TP
+.BR -m
+Use the currently running kernel version, restore its boot configuration, run
+.B olddefconfig
+and open
+.B menuconfig.
+.TP
+.BR -l , --list
+List available kernel branches. With
+.B -A
+or
+.B -I,
+the selected release can also be built.
+.TP
+.B --clean
+Run
+.B make clean
+before building.
+.TP
+.B --change-cpu
+For a cross-CPU build, update the boot symlinks to make the new CPU target the default. Without this option, cross-CPU builds leave the current boot selection unchanged.
+.TP
+.B --staging
+Build both AMD and Intel kernels without changing boot symlinks or regenerating GRUB. With
+.B -A
+or
+.B -I,
+build only the selected CPU target. Requires
+.B /etc/staging_fnh
+and an interactive terminal. It cannot be combined with
+.B --change-cpu.
+.TP
+.B --staging -m
+Use the newest release in the current kernel tree. With
+.B -A
+or
+.B -I,
+only that CPU target is built.
+.TP
+.BR -h , --help
+Show usage information.
+.SH EXAMPLES
+.EX
+sudo ./check_kernel.sh --help
+sudo ./check_kernel.sh --list
+sudo ./check_kernel.sh -A -t 6.12
+sudo ./check_kernel.sh --intel -k 6.12.90 --clean
+sudo ./check_kernel.sh --staging -t 6.12
+sudo ./check_kernel.sh --staging -A -m
+sudo ./check_kernel.sh --staging -I -k 6.12.90
+.EE
+.SH REQUIREMENTS
+The commands
+.BR curl , wget , tar , make , grep , cut , sed , awk , uname , nproc , update-initramfs
+and
+.B update-grub
+must be available. The optional
+.B pv
+command displays extraction progress. Network access to
+.B https://www.kernel.org
+is required for release discovery and downloads.
+.SH FILES
+.TP
+.B /etc/staging_fnh
+Enables staging mode.
+.TP
+.B /boot/config-*
+Kernel configurations used as build defaults.
+.TP
+.B /tmp/linuxkrntmp
+Temporary kernel archives; removed on exit.
+.SH WARNINGS
+Kernel installation modifies
+.B /boot,
+.B /lib/modules,
+and boot symlinks, and may affect the next reboot. Review the selected version and configuration before answering
+.B yes.
+The script currently downloads archives without verifying a separately supplied checksum or signature; use an appropriate trusted network and verify releases independently for high-assurance deployments.
+.SH EXIT STATUS
+Returns zero after a successful listing, configuration/build/install, or a deliberate non-update response. Returns non-zero for missing dependencies, invalid arguments, failed downloads/builds, or missing configuration.
+.SH AUTHOR
+Check Kernel was authored and maintained by FNH media KG.
