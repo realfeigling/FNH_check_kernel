@@ -1,4 +1,4 @@
-.TH CHECK_KERNEL 1 "12 November 2026" "Check Kernel v2.0.25" "User Commands"
+.TH CHECK_KERNEL 8 "12 November 2026" "Check Kernel v2.0.25" "System Administration"
 .SH NAME
 check_kernel \- download, configure, build, and install Linux kernels
 .SH SYNOPSIS
@@ -57,12 +57,27 @@ For a cross-CPU build, update the boot symlinks to make the new CPU target the d
 .BR -h , --help
 Show usage information.
 .SH EXAMPLES
-.EX
-sudo ./check_kernel.sh --help
-sudo ./check_kernel.sh --list
-sudo ./check_kernel.sh -A -t 6.12
-sudo ./check_kernel.sh --intel -k 6.12.90 --clean
-.EE
+.TP
+Aktuellen Kernel-Tree für die aktuelle CPU aktualisieren:
+.B check_kernel.sh
+.TP
+Neuesten 6.12er-Kernel für AMD bauen:
+.B check_kernel.sh -A -t 6.12
+.TP
+Exakten Kernel für Intel bauen:
+.B check_kernel.sh -I -k 6.12.90
+.TP
+Kernel mit zusätzlichem Cleaning bauen:
+.B check_kernel.sh -A -t 6.12 --clean
+.TP
+Aktuellen Kernel mit menuconfig bearbeiten:
+.B check_kernel.sh -m
+.TP
+Verfügbare Kernel anzeigen:
+.B check_kernel.sh -l
+.TP
+Interaktive AMD-Kernel-Auswahl:
+.B check_kernel.sh -A -l
 .SH REQUIREMENTS
 The commands
 .BR curl , wget , tar , make , grep , cut , sed , awk , uname , nproc , update-initramfs
@@ -75,11 +90,20 @@ command displays extraction progress. Network access to
 is required for release discovery and downloads.
 .SH FILES
 .TP
+.B /usr/src/linux-*
+Kernelquellen.
+.TP
 .B /boot/config-*
-Kernel configurations used as build defaults.
+Kernel-Konfigurationen.
+.TP
+.B /boot/vmlinuz-*
+Kernel-Images.
+.TP
+.B /boot/initrd.img-*
+Initramfs-Dateien.
 .TP
 .B /tmp/linuxkrntmp
-Temporary kernel archives; removed on exit.
+Temporäre Kernel-Archive; werden beim Beenden entfernt.
 .SH WARNINGS
 Kernel installation modifies
 .B /boot,
@@ -90,4 +114,10 @@ The script currently downloads archives without verifying a separately supplied 
 .SH EXIT STATUS
 Returns zero after a successful listing, configuration/build/install, or a deliberate non-update response. Returns non-zero for missing dependencies, invalid arguments, failed downloads/builds, or missing configuration.
 .SH AUTHOR
-Check Kernel was authored and maintained by FNH media KG.
+Frank Beckmann
+.br
+FNH media KG
+.SH COPYRIGHT
+(c) 2005-2026 by FNH media KG
+.SH WEBSITE
+https://www.kernel.org
