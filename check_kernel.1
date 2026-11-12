@@ -54,23 +54,6 @@ before building.
 .B --change-cpu
 For a cross-CPU build, update the boot symlinks to make the new CPU target the default. Without this option, cross-CPU builds leave the current boot selection unchanged.
 .TP
-.B --staging
-Build both AMD and Intel kernels without changing boot symlinks or regenerating GRUB. With
-.B -A
-or
-.B -I,
-build only the selected CPU target. Requires
-.B /etc/staging_fnh
-and an interactive terminal. It cannot be combined with
-.B --change-cpu.
-.TP
-.B --staging -m
-Use the newest release in the current kernel tree. With
-.B -A
-or
-.B -I,
-only that CPU target is built.
-.TP
 .BR -h , --help
 Show usage information.
 .SH EXAMPLES
@@ -79,9 +62,6 @@ sudo ./check_kernel.sh --help
 sudo ./check_kernel.sh --list
 sudo ./check_kernel.sh -A -t 6.12
 sudo ./check_kernel.sh --intel -k 6.12.90 --clean
-sudo ./check_kernel.sh --staging -t 6.12
-sudo ./check_kernel.sh --staging -A -m
-sudo ./check_kernel.sh --staging -I -k 6.12.90
 .EE
 .SH REQUIREMENTS
 The commands
@@ -94,9 +74,6 @@ command displays extraction progress. Network access to
 .B https://www.kernel.org
 is required for release discovery and downloads.
 .SH FILES
-.TP
-.B /etc/staging_fnh
-Enables staging mode.
 .TP
 .B /boot/config-*
 Kernel configurations used as build defaults.
