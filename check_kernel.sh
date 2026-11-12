@@ -48,12 +48,6 @@ show_usage() {
   echo "-m                  Aktuellen Kernel holen und menuconfig starten"
   echo "-l|--list           Aktuell verfügbare Kernel-Zweige von kernel.org anzeigen"
   echo "--clean             Kernel-Tree vor dem Build mit make clean bereinigen"
-  if [ -f /etc/staging_fnh ]; then
-    echo "--staging           AMD und Intel bauen; Boot-Standard bleibt unverändert"
-    echo "                    Voraussetzung /etc/staging_fnh: vorhanden"
-    echo "                    Mit -A/-I nur AMD oder Intel bauen"
-    echo "                    Mit -m neuesten Kernel des aktuellen Trees bearbeiten"
-  fi
   echo "--change-cpu        Cross-CPU-Kernel als nächsten Bootkernel setzen"
   echo "                    Mit -A/-I: Kernel interaktiv auswählen und für diesen CPU-Typ bauen"
   echo "-h                  Hilfe anzeigen"
@@ -68,13 +62,6 @@ show_usage() {
   echo "$0 -A -l"
   echo "$0 -I --list"
   echo "$0 -A -t 6.12 --clean"
-  if [ -f /etc/staging_fnh ]; then
-    echo "$0 --staging"
-    echo "$0 --staging -t 6.12"
-    echo "$0 --staging -k 6.12.90"
-    echo "$0 --staging -A -m"
-    echo "$0 --staging -I -t 6.12"
-  fi
 }
 
 
