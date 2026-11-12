@@ -55,6 +55,13 @@ before building.
 Write output additionally to
 .IR FILE .
 .TP
+.B --list-installed
+List installed kernel images below
+.B /boot.
+.TP
+.BI --remove  VERSION
+After confirmation, remove the selected kernel image, configuration, initramfs and module tree. The currently running kernel cannot be removed.
+.TP
 .B --change-cpu
 For a cross-CPU build, update the boot symlinks to make the new CPU target the default. Without this option, cross-CPU builds leave the current boot selection unchanged.
 .TP

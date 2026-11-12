@@ -25,6 +25,8 @@ export CHANGE_CPU="0"
 export STAGING="0"
 export DRY_RUN="0"
 export LOG_FILE=""
+export LOCK_FILE="/run/lock/check_kernel.lock"
+PHASE="initialization"
 
 NPROC=$(nproc 2>/dev/null || echo 1)
 
@@ -51,6 +53,8 @@ show_usage() {
   echo "-l|--list           Aktuell verfügbare Kernel-Zweige von kernel.org anzeigen"
   echo "--clean             Kernel-Tree vor dem Build mit make clean bereinigen"
   echo "--log <file>        Ausgabe zusätzlich in eine Logdatei schreiben"
+  echo "--list-installed    Installierte Kernel anzeigen"
+  echo "--remove <version>  Installierten Kernel nach Bestätigung entfernen"
   echo "--change-cpu        Cross-CPU-Kernel als nächsten Bootkernel setzen"
   echo "                    Mit -A/-I: Kernel interaktiv auswählen und für diesen CPU-Typ bauen"
   echo "-h                  Hilfe anzeigen"
@@ -418,13 +422,24 @@ require_root() {
     echo "This script must be run as root."
     exit 1
   fi
+
+  mkdir -p "$(dirname "$LOCK_FILE")"
+  if ! command -v flock >/dev/null 2>&1; then
+    echo "Missing required command: flock"
+    exit 1
+  fi
+  exec {LOCK_FD}>"$LOCK_FILE"
+  if ! flock -n "$LOCK_FD"; then
+    echo "Another check_kernel process is already running: $LOCK_FILE" >&2
+    exit 1
+  fi
 }
 
 require_cmds() {
   local missing=0
   local cmd
 
-  for cmd in curl wget tar make grep cut sed awk uname nproc update-initramfs update-grub; do
+  for cmd in curl wget tar make grep cut sed awk uname nproc sha256sum update-initramfs update-grub; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
       echo "Missing required command: $cmd"
       missing=1
@@ -441,10 +456,52 @@ require_cmds() {
 }
 
 cleanup_tmp() {
-  rm -rf "$TMPKRN"
+  if [ -n "${TMPKRN:-}" ] && [ "$TMPKRN" != "/" ] && [ -d "$TMPKRN" ]; then
+    rm -rf -- "$TMPKRN"
+  fi
+}
+
+on_error() {
+  local status=$?
+  echo "ERROR: phase=${PHASE}, line=${BASH_LINENO[0]:-unknown}, status=${status}" >&2
+  exit "$status"
 }
 
 trap cleanup_tmp EXIT
+trap on_error ERR
+
+download_kernel_archive() {
+  local url="$1"
+  local archive="$2"
+  local checksum_url="$3"
+  local part="${archive}.part"
+  local archive_name="${archive##*/}"
+  local checksums expected actual
+
+  PHASE="download"
+  if [ ! -s "$archive" ]; then
+    print_info "Download" "$url"
+    wget -c -O "$part" "$url"
+    mv -f -- "$part" "$archive"
+  fi
+
+  PHASE="verify-download"
+  checksums="$(curl -fsSL "$checksum_url")" || {
+    echo "Could not retrieve checksum list: $checksum_url" >&2
+    return 1
+  }
+  expected="$(printf '%s\n' "$checksums" | awk -v file="$archive_name" '$NF == file { print $1; exit }')"
+  if [[ ! "$expected" =~ ^[[:xdigit:]]{64}$ ]]; then
+    echo "No SHA256 checksum found for $archive" >&2
+    return 1
+  fi
+  actual="$(sha256sum "$archive" | awk '{print $1}')"
+  if [ "$actual" != "$expected" ]; then
+    echo "SHA256 verification failed for $archive" >&2
+    return 1
+  fi
+  print_info "SHA256" "verified"
+}
 
 extract_kernel_archive() {
   local archive="$1"
@@ -453,6 +510,7 @@ extract_kernel_archive() {
 
   srcdir="$(kernel_srcdir "$version")"
 
+  PHASE="extract"
   print_info "Extract archive" "$archive"
   print_info "Extract target" "$srcdir"
   rm -rf "$srcdir"
@@ -529,7 +587,10 @@ install_kernel() {
 
   echo "retrieving kernel from server ..."
   echo "getting ${KERNELHOST}${KERNELPATH}${KERNELSUB2}${KERNELFILE}${ONLINEVER}${KERNELTAIL}"
-  wget "${KERNELHOST}${KERNELPATH}${KERNELSUB2}${KERNELFILE}${ONLINEVER}${KERNELTAIL}"
+  download_kernel_archive \
+    "${KERNELHOST}${KERNELPATH}${KERNELSUB2}${KERNELFILE}${ONLINEVER}${KERNELTAIL}" \
+    "${KERNELFILE}${ONLINEVER}${KERNELTAIL}" \
+    "${KERNELHOST}${KERNELPATH}${KERNELSUB2}sha256sums.asc"
 
   extract_kernel_archive "${KERNELFILE}${ONLINEVER}${KERNELTAIL}" "$ONLINEVER"
 }
@@ -548,7 +609,10 @@ install_kernel_minusk() {
 
   echo "retrieving kernel from server ..."
   echo "getting ${KERNELHOST}${KERNELPATH}${KERNELSUB2}${KERNELFILE}${KERNELVER}${KERNELTAIL}"
-  wget "${KERNELHOST}${KERNELPATH}${KERNELSUB2}${KERNELFILE}${KERNELVER}${KERNELTAIL}"
+  download_kernel_archive \
+    "${KERNELHOST}${KERNELPATH}${KERNELSUB2}${KERNELFILE}${KERNELVER}${KERNELTAIL}" \
+    "${KERNELFILE}${KERNELVER}${KERNELTAIL}" \
+    "${KERNELHOST}${KERNELPATH}${KERNELSUB2}sha256sums.asc"
 
   extract_kernel_archive "${KERNELFILE}${KERNELVER}${KERNELTAIL}" "$KERNELVER"
 }
@@ -720,11 +784,10 @@ staging_download_sources() {
   archive="${KERNELFILE}${version}${KERNELTAIL}"
   url="${KERNELHOST}${KERNELPATH}v${version%%.*}.x/${archive}"
   mkdir -p "$TMPKRN"
-  if [ ! -s "$TMPKRN/$archive" ]; then
-    print_info 'Downloading' "$url"
-    wget -O "$TMPKRN/$archive.part" "$url"
-    mv "$TMPKRN/$archive.part" "$TMPKRN/$archive"
-  fi
+  download_kernel_archive \
+    "$url" \
+    "$TMPKRN/$archive" \
+    "${KERNELHOST}${KERNELPATH}v${version%%.*}.x/sha256sums.asc"
   extract_kernel_archive "$TMPKRN/$archive" "$version"
 }
 
@@ -823,6 +886,57 @@ run_staging() {
   echo 'Do not run update-grub without checking GRUB_DEFAULT first.'
 }
 
+list_installed_kernels() {
+  local image version
+  local found=0
+  shopt -s nullglob
+  for image in /boot/vmlinuz-*; do
+    [ -f "$image" ] || continue
+    version="${image##*/vmlinuz-}"
+    if [ "$version" = "$(uname -r)" ]; then
+      printf '%s (running)\n' "$version"
+    else
+      printf '%s\n' "$version"
+    fi
+    found=1
+  done | sort -V
+  shopt -u nullglob
+  if [ "$found" -eq 0 ]; then
+    echo 'No installed kernels found.'
+  fi
+}
+
+remove_installed_kernel() {
+  local version="$1"
+  local current="$(uname -r)"
+
+  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+[-+._A-Za-z0-9]*$ ]]; then
+    echo "Invalid kernel version: $version" >&2
+    return 1
+  fi
+  if [ "$version" = "$current" ]; then
+    echo "Refusing to remove the running kernel: $current" >&2
+    return 1
+  fi
+  if [ ! -e "/boot/vmlinuz-$version" ] && [ ! -e "/lib/modules/$version" ]; then
+    echo "Kernel is not installed: $version" >&2
+    return 1
+  fi
+
+  echo "The following will be removed:"
+  printf '  /boot/vmlinuz-%s\n  /boot/config-%s\n  /boot/initrd.img-%s\n  /lib/modules/%s\n' \
+    "$version" "$version" "$version" "$version"
+  printf 'Remove kernel %s? [yes/NO] ' "$version"
+  read -r choice
+  [ "$choice" = yes ] || { echo 'aborted.'; return 0; }
+
+  PHASE="remove"
+  rm -f -- "/boot/vmlinuz-$version" "/boot/config-$version" "/boot/initrd.img-$version"
+  rm -rf -- "/lib/modules/$version"
+  update-grub
+  echo "Removed kernel: $version"
+}
+
 parse_global_args "$@"
 
 if [ -n "$LOG_FILE" ]; then
@@ -844,6 +958,38 @@ if [ -n "${ARGS_TEXT:-}" ]; then
 ${ARGS_TEXT}
 EOF
 fi
+
+case "${1:-}" in
+  -t|-T)
+    if [ -z "${2:-}" ] || [[ ! "$2" =~ ^[0-9]+\.[0-9]+$ ]]; then
+      echo "Invalid kernel tree version: ${2:-<missing>}" >&2
+      exit 1
+    fi
+    ;;
+  -k|-K)
+    if [ -z "${2:-}" ] || [[ ! "$2" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      echo "Invalid kernel version: ${2:-<missing>}" >&2
+      exit 1
+    fi
+    ;;
+esac
+
+case "${1:-}" in
+  --list-installed)
+    list_installed_kernels
+    exit 0
+    ;;
+  --remove)
+    require_root
+    if [ -z "${2:-}" ]; then
+      echo 'Missing kernel version after --remove' >&2
+      exit 1
+    fi
+    require_cmds
+    remove_installed_kernel "$2"
+    exit $?
+    ;;
+esac
 
 if [ "$STAGING" = 1 ]; then
   init_cpu_type
@@ -900,6 +1046,10 @@ case "${1:-}" in
       echo "Missing kernel tree version, example: -t 6.12"
       exit 1
     fi
+    if [[ ! "$KERNELVER" =~ ^[0-9]+\.[0-9]+$ ]]; then
+      echo "Invalid kernel tree version: $KERNELVER"
+      exit 1
+    fi
 
     ONLINEVER="$(curl -ks https://www.kernel.org/finger_banner | grep -w "$KERNELVER" | cut -d ':' -f 2 | sed -n 1p | sed 's/ //g')"
     if [ -z "$ONLINEVER" ]; then
@@ -935,6 +1085,10 @@ case "${1:-}" in
     KERNELVER="${2:-}"
     if [ -z "$KERNELVER" ]; then
       echo "Missing kernel version, example: -k 6.12.90"
+      exit 1
+    fi
+    if [[ ! "$KERNELVER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      echo "Invalid kernel version: $KERNELVER"
       exit 1
     fi
 
