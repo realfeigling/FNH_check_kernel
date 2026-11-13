@@ -863,10 +863,24 @@ run_staging() {
     ( cd "$srcdir" && make menuconfig )
     release="$(staging_kernel_release "$cpu" "$version" "$srcdir")" || exit 1
     print_info 'Kernel release' "$release"
-    # Never overwrite a previously installed kernel or its module tree.
+    # Replacing an existing staging kernel requires explicit confirmation.
     if [ -e "/boot/vmlinuz-${release}" ] || [ -e "/lib/modules/${release}" ]; then
-      echo "ERROR: kernel ${release} already installed; refusing to overwrite it." >&2
-      exit 1
+      if [ "$release" = "$(uname -r)" ]; then
+        echo "ERROR: refusing to replace the running kernel: ${release}" >&2
+        exit 1
+      fi
+      printf 'Kernel %s is already installed. Replace it? [yes/NO] ' "$release"
+      read -r replace_choice
+      if [ "$replace_choice" != yes ]; then
+        echo "Keeping existing kernel: ${release}"
+        exit 0
+      fi
+      print_info 'Replacing existing kernel' "$release"
+      rm -f -- \
+        "/boot/vmlinuz-${release}" \
+        "/boot/config-${release}" \
+        "/boot/initrd.img-${release}"
+      rm -rf -- "/lib/modules/${release}"
     fi
     ( cd "$srcdir" &&
       if [ "$CLEAN_BUILD" = 1 ]; then make clean; fi &&
