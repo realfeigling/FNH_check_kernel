@@ -866,8 +866,8 @@ run_staging() {
     # Replacing an existing staging kernel requires explicit confirmation.
     if [ -e "/boot/vmlinuz-${release}" ] || [ -e "/lib/modules/${release}" ]; then
       if [ "$release" = "$(uname -r)" ]; then
-        echo "ERROR: refusing to replace the running kernel: ${release}" >&2
-        exit 1
+        echo "WARNING: ${release} is the currently running kernel."
+        echo "Replacing its files affects the next boot and future module loads."
       fi
       printf 'Kernel %s is already installed. Replace it? [yes/NO] ' "$release"
       read -r replace_choice
